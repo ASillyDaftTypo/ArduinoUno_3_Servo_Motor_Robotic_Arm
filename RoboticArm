@@ -1,0 +1,149 @@
+#include <Servo.h>			//servo module is loaded
+ 
+const int FEEDBACKPIN1 = A0;
+const int FEEDBACKPIN2 = A1;
+const int FEEDBACKPIN3 = A2;		//ports assigned to accept feedback from servos
+const int SERVOPIN1 = 3;
+const int SERVOPIN2 = 5;
+const int SERVOPIN3 = 6;		//ports assigned to output PWM to control servos
+const int MINP = 750;			//sets minimum pulse range
+const int MAXP = 2250;			//sets maximum pulse range
+const int FRAMES = 100; 		 //total number of reference frames taken for recording
+const int SMOOTH = 50;			//reference frames taken per degree for calibration
+ 
+Servo servo1;
+Servo servo2;
+Servo servo3;				//assigns each servo as a servo variable type
+int angle1 = 90;
+int angle2 = 90;
+int angle3 = 90;
+int final1 = 90;
+int final2 = 90;				//variables defined and assigned arbitrary values to avoid
+int final3 = 90;				//any unwanted anomalies
+int trimpot[500];			//array used to convert potential current to angles
+int posix[FRAMES];			//array used for servo 1 position storage
+int posiy[FRAMES];			//array used for servo 2 position storage
+int posiz[FRAMES];			//array used for servo 3 position storage
+ 
+void setup(){
+  Serial.begin(9600);			//baud rate between serial monitor and Arduino
+}					//Uno established
+
+
+void loop(){
+  if ( Serial.available()) {			//checks if Arduino connected
+    char ch = Serial.read();		//assigns any user input to variable ch
+    switch(ch) {				//starts case statement based on ch
+      
+      case 'a':				
+        servo1.detach();  
+        servo2.detach();
+        servo3.detach();  			//disconnects servos so they can be moved freely
+        Serial.println("Recording positions");
+        for( int i=0; i<FRAMES; i++){		//loop established for number of reference frames
+          posix[i]=0;
+          posiy[i]=0;
+          posiz[i]=0;				//start of each loop, array cell given 0 value
+          for( int j=0; j<11; j++){				//loop established for  every frame to
+            posix[i]=posix[i]+analogRead(FEEDBACKPIN1);	//gain 10 values of voltage at 10ms
+            posiy[i]=posiy[i]+analogRead(FEEDBACKPIN2);	//intervals. As value is reset to 0 at start 
+            posiz[i]=posiz[i]+analogRead(FEEDBACKPIN3);	//of each frame, extra loop is added
+            delay(10);				
+          }
+          posix[i]=posix[i]/11;
+          posiy[i]=posiy[i]/11;
+          posiz[i]=posiz[i]/11;			//voltage results divided by 11 to give average
+        Serial.print(analogRead(FEEDBACKPIN1));
+        Serial.print(" ");
+        Serial.print(analogRead(FEEDBACKPIN2));
+        Serial.print(" ");
+        Serial.print(analogRead(FEEDBACKPIN3));
+        Serial.print(", ");				//user is displayed rough values of voltage
+        }
+        Serial.println("Done.");
+        break;
+      //  end of record
+        
+      //  release
+      case 'b':
+        Serial.println("Stop");
+        servo1.detach();
+        servo2.detach();
+        servo3.detach();    		//this process simply disconnects servos so they may be moved
+        break;			//freely
+      //  end of release
+      
+      //  play
+      case 'c':
+        servo1.attach(SERVOPIN1,MINP,MAXP);	//servos are reconnected and assigned
+        servo2.attach(SERVOPIN2,MINP,MAXP);	//PWM pins and given max and min pulse values
+        servo3.attach(SERVOPIN3,MINP,MAXP);  
+        Serial.println("Playing positions");
+        for( int i=0; i<FRAMES; i++){		//loop started for number of frames recorded
+          final1=posix[i];			//values stored in array for each servo are copied to
+          final2=posiy[i];			//separate variable, allowing calculation to be done
+          final3=posiz[i];    			
+          angle1 = trimpot[final1];		//angle is calculated from the voltage value using the
+          angle2 = trimpot[final2];		//trimpot array
+          angle3 = trimpot[final3];
+          servo1.write(angle1);
+          servo2.write(angle2);
+          servo3.write(angle3);		//angle sent to servo motor for the current frame
+          delay(100);			//delay before next frame is ran
+        }
+        Serial.println("Done.");
+        break;
+      //  end of play
+        
+      //  calibrate
+      case 'd' :   
+        Serial.println("Calibrating");
+        servo1.attach(SERVOPIN1,MINP,MAXP);
+        servo1.write(1);
+        servo2.attach(SERVOPIN2,MINP,MAXP);
+        servo2.write(1);
+        servo3.attach(SERVOPIN3,MINP,MAXP);
+        servo3.write(1);				//servos are connected and set to initial positions
+        delay(5000); 				//delay allowing servos to reach starting positions
+        for( int i=1; i<=180; i++ ){			//loop created for 180 degrees of servo rotation
+          servo1.write(i);
+          servo2.write(i);
+          servo3.write(i);
+          delay(50);					//delay allows servos to reach new angle
+          angle1=0;
+          angle2=0;
+          angle3=0;
+          for( int j=0; j<SMOOTH; j++){			//similar to earlier averaging found in
+            angle1=angle1+analogRead(FEEDBACKPIN1);	//recording process, however more
+            angle2=angle2+analogRead(FEEDBACKPIN2);	//accurate due to no time constraint
+            angle3=angle3+analogRead(FEEDBACKPIN3);
+            delay(5);
+          }
+          angle1=angle1/SMOOTH;
+          angle2=angle2/SMOOTH;
+          angle3=angle3/SMOOTH;
+          Serial.print(angle1);
+          Serial.print(" ");
+          Serial.print(angle2);
+          Serial.print(" ");
+          Serial.print(angle3);
+          trimpot[angle1] = i;
+          trimpot[angle2] = i;
+          trimpot[angle3] = i;	//angle assigned to each servo for individual recorded voltage
+          Serial.print(", ");
+        }
+        int a=1;
+        for( int i=0; i<500; i++ ){	//small code segment allows for angles that are not covered
+          if ( trimpot[i] == 0 )	//during calibration by setting them to 1
+            trimpot[i]=a;
+          else
+            a=trimpot[i];
+        }
+        Serial.println();
+        Serial.println("Done.");
+        break;  
+      //  end of calibrate
+      
+    }
+  }
+}
